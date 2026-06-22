@@ -70,6 +70,11 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg-0);color:var(-
 /* Toolbar */
 .tb-brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;letter-spacing:-.02em}
 .tb-brand img{height:24px;width:auto}
+.logo-wrapper{position:relative;display:inline-flex;align-items:center;cursor:pointer;border-radius:4px;padding:2px;transition:outline .15s ease}
+.logo-wrapper:hover{outline:1px solid rgba(0,199,255,.35);outline-offset:1px}
+.logo-wrapper.logo-selected{outline:1.5px solid var(--accent);outline-offset:1px}
+.logo-resize-handle{position:absolute;bottom:-5px;right:-5px;width:9px;height:9px;background:var(--accent);border:2px solid #fff;border-radius:50%;cursor:nwse-resize;display:none;pointer-events:all;box-shadow:0 0 0 1px rgba(0,0,0,.15);z-index:100}
+.logo-wrapper.logo-selected .logo-resize-handle{display:block}
 .tb-sep{width:1px;height:24px;background:var(--bg-3);margin:0 8px}
 .tb-group{display:flex;gap:2px;align-items:center}
 .tb-actions{margin-left:auto;display:flex;gap:6px;align-items:center}
@@ -288,7 +293,7 @@ select.prop-input{cursor:pointer;-webkit-appearance:none;appearance:none;backgro
 /* Email section styles */
 .es-header{padding:16px 24px;display:flex;align-items:center}
 .es-header.pos-left{justify-content:flex-start}.es-header.pos-right{justify-content:flex-end}.es-header.pos-center{justify-content:center}
-.es-header img{max-height:25px}
+.es-header img{max-height:none}
 .es-hero{padding:48px 40px;text-align:center;position:relative;overflow:hidden}
 .es-hero .bg-layer{position:absolute;inset:0;z-index:0;pointer-events:none}
 .es-hero .content-layer{position:relative;z-index:1}
@@ -522,7 +527,7 @@ select.prop-input{cursor:pointer;-webkit-appearance:none;appearance:none;backgro
 </div>
 <div class="app" style="visibility:hidden">
   <header class="toolbar">
-    <div class="tb-brand"><img id="brandLogo" src="Logo_DarkMode.svg" alt="Pikaso" style="height:24px;width:auto;"></div>
+    <div class="tb-brand"><div id="logoWrapper" class="logo-wrapper" onclick="selLogo(event)" title="Click to select logo"><img id="brandLogo" src="Logo_DarkMode.svg" alt="Pikaso" style="height:24px;width:auto;"><span class="logo-resize-handle" id="logoResizeHandle" onmousedown="startLogoResize(event)"></span></div></div>
     <div class="tb-sep"></div>
     <div class="tb-file">
       <button class="btn btn-ghost" onclick="toggleFileMenu()" aria-haspopup="true" aria-expanded="false" id="fileMenuBtn"><i class="ri-file-line"></i> File</button>
@@ -670,7 +675,7 @@ const CMDS=[
   {n:'Undo',ic:'ri-arrow-go-back-line',fn:()=>undo(),k:'Ctrl+Z'},
   {n:'Redo',ic:'ri-arrow-go-forward-line',fn:()=>redo(),k:'Ctrl+Shift+Z'},
 ];
-let S={sel:null,selEl:null,gBg:'#FFFFFF',zoom:1,hist:[],hi:-1,view:'desktop',txtRange:null,moveMode:false,toastTimer:null,toastAction:null,lastDelete:null,propAdv:{}};
+let S={sel:null,selEl:null,logoSel:false,gBg:'#FFFFFF',zoom:1,hist:[],hi:-1,view:'desktop',txtRange:null,moveMode:false,toastTimer:null,toastAction:null,lastDelete:null,propAdv:{}};
 let exportFmt='png';
 let exportScale=2;
 function gid(){return 's'+Math.random().toString(36).substr(2,8)}
@@ -842,7 +847,7 @@ function stbar(id){return `<div class="stbar"><button class="stb" onclick="event
 function mkSec(type,id){
   const tb=stbar(id),oc=`onclick="selS('${id}',event)"`;
   switch(type){
-    case 'header':return `<div class="email-section es-header pos-left" id="${id}" data-type="header" data-logo-variant="light" data-logo-pos="left" style="background:#FFFFFF" ${oc}>${tb}<img src="${LOGO_LIGHT_DATA_URI}" alt="Logo" style="max-height:25px"></div>`;
+    case 'header':return `<div class="email-section es-header pos-left" id="${id}" data-type="header" data-logo-variant="light" data-logo-pos="left" style="background:#FFFFFF" ${oc}>${tb}<img src="${LOGO_LIGHT_DATA_URI}" alt="Logo" class="es-logo-img" data-el-type="image" onclick="event.stopPropagation();selEl(this,event)" style="height:25px;width:auto;max-width:100%;cursor:pointer"></div>`;
     case 'hero-center':return `<div class="email-section es-hero" id="${id}" data-type="hero-center" data-bg-type="solid" style="background:#6366F1;color:#FFFFFF" ${oc}>${tb}<div class="bg-layer"></div><div class="content-layer"><div class="subtext" contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">INTRODUCING SOMETHING NEW</div><h1 contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">Make Something Wonderful</h1><p contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">Build beautiful emails that engage your audience and drive meaningful results.</p><a class="cta-btn" contenteditable="true" style="background:#fff;color:#6366F1;border-radius:8px" onclick="event.stopPropagation();selEl(this,event)" data-el-type="button">Get Started Free</a></div></div>`;
     case 'hero-image':return `<div class="email-section es-hero-image" id="${id}" data-type="hero-image" style="color:#FFFFFF;min-height:360px" ${oc}>${tb}<img class="bg-img" src="https://images.unsplash.com/photo-1557682250-33bd709cbe85?w=600&q=80" alt="Hero background" crossorigin="anonymous" onclick="event.stopPropagation();selEl(this,event)" data-el-type="image"><div class="overlay" style="background:linear-gradient(180deg,rgba(0,0,0,.3),rgba(0,0,0,.6))"></div><div class="content-layer"><div class="subtext" contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">YOUR BRAND</div><h1 contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">Full-Width Visual Impact</h1><p contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">A stunning hero section with an image background and text overlay.</p><a class="cta-btn" contenteditable="true" style="background:#6366F1;color:#fff;border-radius:8px" onclick="event.stopPropagation();selEl(this,event)" data-el-type="button">Explore Now</a></div></div>`;
     case 'hero-device':return `<div class="email-section es-hero-device" id="${id}" data-type="hero-device" data-device="laptop" data-device-theme="dark" data-mockup-x="0" data-mockup-y="0" data-mockup-rot="0" data-screen-x="50" data-screen-y="50" data-screen-zoom="100" data-bg-type="solid" style="background:#FFFFFF;color:#111827" ${oc}>${tb}<div class="bg-layer"></div><div class="content-layer"><div class="hero-copy"><div class="subtext" contenteditable="true" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">Preview Experience</div><h1 contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">Show Your Platform in Context</h1><p contenteditable="true" onclick="event.stopPropagation();selEl(this,event)" data-el-type="text">Upload a real screenshot and present it inside a polished device mockup so stakeholders instantly understand the product experience.</p><a class="cta-btn" contenteditable="true" style="background:#24104F;color:#FFFFFF;border-radius:8px" onclick="event.stopPropagation();selEl(this,event)" data-el-type="button">Book a Demo</a></div><div class="device-mockup device-laptop theme-dark" data-el-type="shape" onclick="selEl(this,event)"><div class="device-screen"><div class="img-placeholder" onclick="event.stopPropagation();trigImg(this)"><span><i class="ri-image-add-line"></i> Upload screenshot</span></div></div></div></div></div>`;
@@ -939,6 +944,7 @@ function showEmpty(){const cv=document.getElementById('canvas');cv.innerHTML=`<d
 // ═══════════════════════════════════════════════════════════
 function selS(id,ev){
   if(ev&&(ev.target.closest('.stbar')||ev.target.closest('[data-el-type]')))return;
+  deselLogo();
   document.querySelectorAll('.email-section').forEach(e=>e.classList.remove('selected'));
   document.querySelectorAll('.element-selected').forEach(e=>e.classList.remove('element-selected'));
   S.selEl=null;S.moveMode=false;const el=document.getElementById(id);
@@ -948,6 +954,7 @@ function selS(id,ev){
 function selEl(el,ev){
   if(ev&&ev.stopPropagation)ev.stopPropagation();
   else if(window.event&&window.event.stopPropagation)window.event.stopPropagation();
+  deselLogo();
   document.querySelectorAll('.element-selected').forEach(e=>e.classList.remove('element-selected'));
   el.classList.add('element-selected');S.selEl=el;
   // Find parent section
@@ -972,6 +979,11 @@ function ensureEditableTargets(root){
   root.querySelectorAll('.team-avatar').forEach(n=>{
     if(!n.dataset.elType)n.dataset.elType='icon';
     n.style.cursor=n.style.cursor||'pointer';
+    if(!n.getAttribute('onclick'))n.setAttribute('onclick','event.stopPropagation();selEl(this,event)');
+  });
+  root.querySelectorAll('.es-header img,.es-logo-img').forEach(n=>{
+    if(!n.dataset.elType)n.dataset.elType='image';
+    n.style.cursor='pointer';
     if(!n.getAttribute('onclick'))n.setAttribute('onclick','event.stopPropagation();selEl(this,event)');
   });
 }
@@ -1079,6 +1091,7 @@ function startElResize(e){
   e.preventDefault();e.stopPropagation();
   const dir=e.target.dataset.dir;
   const el=S.selEl;
+  if(el.tagName==='IMG')el.style.maxHeight='none';
   const rect=el.getBoundingClientRect();
   const naturalRatio=(el.tagName==='IMG'&&el.naturalWidth&&el.naturalHeight)?(el.naturalWidth/el.naturalHeight):0;
   _elResize={
@@ -1817,7 +1830,8 @@ document.getElementById('fileIn').addEventListener('change',function(e){
         } else if(!sidePh&&!sideImg&&existImg){existImg.src=ev.target.result;}
       }
     }else if(m==='logo'&&S.sel){
-      const el=document.getElementById(S.sel);const img=el.querySelector('img');if(img)img.src=ev.target.result;
+      const el=document.getElementById(S.sel);const img=el.querySelector('img');
+      if(img){img.src=ev.target.result;img.dataset.elType='image';img.style.cursor='pointer';if(!img.getAttribute('onclick'))img.setAttribute('onclick','event.stopPropagation();selEl(this,event)');}
     }
     saveH();toast('Uploaded');
   };r.readAsDataURL(f);this.value='';
@@ -2641,7 +2655,7 @@ function setEditorTheme(mode){
     themeBtn.setAttribute('title',isLight?'Switch to dark mode':'Switch to light mode');
   }
   const logo=document.getElementById('brandLogo');
-  if(logo)logo.src=mode==='light'?'Logo_LightMode.svg':'Logo_DarkMode.svg';
+  if(logo&&!logo.dataset.customLogo)logo.src=mode==='light'?'Logo_LightMode.svg':'Logo_DarkMode.svg';
   localStorage.setItem('pikaso-theme',mode);
 }
 function toggleEditorTheme(ev){
@@ -3011,6 +3025,91 @@ document.getElementById('canvasArea').addEventListener('click',e=>{
     setTimeout(()=>splash.remove(),500);
   },5200);
 })();
+// ═══════════════════════════════════════════════════════════
+// HEADER LOGO SELECTION & RESIZE
+// ═══════════════════════════════════════════════════════════
+function selLogo(ev){
+  if(ev)ev.stopPropagation();
+  S.logoSel=true;
+  document.getElementById('logoWrapper').classList.add('logo-selected');
+  document.querySelectorAll('.email-section').forEach(e=>e.classList.remove('selected'));
+  document.querySelectorAll('.element-selected').forEach(e=>e.classList.remove('element-selected'));
+  S.sel=null;S.selEl=null;S.moveMode=false;hideElBox();
+  showLogoPanel();
+}
+function deselLogo(){
+  if(!S.logoSel)return;
+  S.logoSel=false;
+  const w=document.getElementById('logoWrapper');
+  if(w)w.classList.remove('logo-selected');
+}
+function showLogoPanel(){
+  document.getElementById('noSel').style.display='none';
+  const pp=document.getElementById('props');pp.style.display='block';
+  const logo=document.getElementById('brandLogo');
+  const h=logo?parseInt(logo.style.height)||24:24;
+  pp.innerHTML=`<div class="el-indicator"><i class="ri-image-line"></i> Editing: <strong style="margin-left:4px;color:var(--text-0)">Header Logo</strong></div><div class="prop-group"><label class="prop-label">Logo Height</label><input type="range" class="spacing-slider" min="16" max="72" value="${h}" oninput="setLogoHeight(this.value);this.nextElementSibling.textContent=this.value+'px'"><span style="font-size:10px;color:var(--text-1)">${h}px</span><p style="font-size:10px;color:var(--text-2);margin-top:4px">Width adjusts automatically to preserve aspect ratio.</p></div><div class="prop-group"><label class="prop-label">Replace Logo</label><div class="upload-zone" onclick="trigLogoUpload()"><i class="ri-upload-cloud-line"></i><p>Click to upload</p></div></div>`;
+}
+function setLogoHeight(h){
+  const logo=document.getElementById('brandLogo');
+  if(!logo)return;
+  logo.style.height=h+'px';
+  logo.style.width='auto';
+}
+function trigLogoUpload(){
+  const fi=document.getElementById('fileIn');
+  if(!fi)return;
+  const old=fi.onchange;
+  fi.onchange=function(e){
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      const logo=document.getElementById('brandLogo');
+      if(logo){logo.src=ev.target.result;logo.dataset.customLogo='true';}
+      if(S.logoSel)showLogoPanel();
+    };
+    r.readAsDataURL(f);
+    fi.value='';fi.onchange=old;
+  };
+  fi.click();
+}
+let _logoResize=null;
+function startLogoResize(e){
+  e.preventDefault();e.stopPropagation();
+  const logo=document.getElementById('brandLogo');
+  if(!logo)return;
+  const rect=logo.getBoundingClientRect();
+  _logoResize={startX:e.clientX,startY:e.clientY,startH:rect.height};
+  document.addEventListener('mousemove',onLogoResizeMove);
+  document.addEventListener('mouseup',stopLogoResize);
+}
+function onLogoResizeMove(e){
+  if(!_logoResize)return;
+  const dx=e.clientX-_logoResize.startX;
+  const dy=e.clientY-_logoResize.startY;
+  const delta=Math.abs(dx)>=Math.abs(dy)?dx:dy;
+  const newH=Math.max(16,Math.min(72,Math.round(_logoResize.startH+delta)));
+  const logo=document.getElementById('brandLogo');
+  if(!logo)return;
+  logo.style.height=newH+'px';
+  logo.style.width='auto';
+  if(S.logoSel){
+    const slider=document.querySelector('#props .spacing-slider');
+    const lbl=document.querySelector('#props .spacing-slider + span');
+    if(slider)slider.value=newH;
+    if(lbl)lbl.textContent=newH+'px';
+  }
+}
+function stopLogoResize(){
+  document.removeEventListener('mousemove',onLogoResizeMove);
+  document.removeEventListener('mouseup',stopLogoResize);
+  _logoResize=null;
+}
+document.addEventListener('click',e=>{
+  if(!S.logoSel)return;
+  if(!e.target.closest('#logoWrapper')){deselLogo();if(!S.sel&&!S.selEl)showNoSel();}
+});
+
 </script>
 </body>
 </html>
