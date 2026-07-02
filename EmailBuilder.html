@@ -777,7 +777,7 @@ function initDragDrop(){
   cv.addEventListener('dragover',e=>e.preventDefault());
   cv.addEventListener('drop',e=>{e.preventDefault();const t=e.dataTransfer.getData('text/plain');if(t&&DEFS.find(d=>d.t===t))addSection(t);});
 }
-function initSortable(){new Sortable(document.getElementById('canvas'),{animation:180,ghostClass:'sortable-ghost',handle:'.email-section',filter:'.stbar,[contenteditable],.img-placeholder,.feature-icon,.benefit-icon',preventOnFilter:false,onEnd:()=>{enforceFooterRule();saveH();}});}
+function initSortable(){const cv=document.getElementById('canvas');if(cv._sortable){try{cv._sortable.destroy();}catch(_){}}cv._sortable=new Sortable(cv,{animation:180,ghostClass:'sortable-ghost',handle:'.email-section',filter:'.stbar,[contenteditable],.img-placeholder,.feature-icon,.benefit-icon',preventOnFilter:false,onEnd:()=>{enforceFooterRule();saveH();}});}
 
 // ═══════════════════════════════════════════════════════════
 // SECTION GENERATORS
@@ -942,6 +942,21 @@ function undoLastDelete(){
 }
 function dupS(id){const el=document.getElementById(id);if(!el)return;const nid=gid(),cl=el.cloneNode(true);cl.id=nid;cl.setAttribute('onclick',`selS('${nid}',event)`);cl.querySelector('.stbar').outerHTML=stbar(nid);ensureEditableTargets(cl);insertSectionWithFooterRule(el.parentElement,cl,cl.dataset.type);enforceFooterRule();saveH();selS(nid);toast('Duplicated');}
 function moveS(id,dir){const el=document.getElementById(id);if(!el)return;if(dir===-1&&el.previousElementSibling)el.parentElement.insertBefore(el,el.previousElementSibling);else if(dir===1&&el.nextElementSibling)el.parentElement.insertBefore(el.nextElementSibling,el);saveH();}
+// Rehydrate a section restored from a saved template so it behaves exactly like a
+// freshly-added one: assign a fresh id, (re)inject the section toolbar, rewire the
+// section-level onclick, and re-attach element-level click/selection handlers. Without
+// this, loaded sections lose their toolbars and selection/bounding-box controls.
+function hydrateLoadedSection(el){
+  if(!el)return el;
+  const nid=gid();
+  el.id=nid;
+  el.setAttribute('onclick',`selS('${nid}',event)`);
+  const existing=el.querySelector(':scope > .stbar');
+  if(existing){existing.outerHTML=stbar(nid);}
+  else{el.insertAdjacentHTML('afterbegin',stbar(nid));}
+  ensureEditableTargets(el);
+  return el;
+}
 function showEmpty(){const cv=document.getElementById('canvas');cv.innerHTML=`<div class="empty-state" id="emptyState"><i class="ri-drag-drop-line"></i><h3>Start building your email</h3><p>Drag sections here or pick a template</p></div>`;cv.classList.add('is-empty');}
 
 // ═══════════════════════════════════════════════════════════
@@ -1014,6 +1029,47 @@ function initTextSelectionTracking(){
     }
   },true);
   cv.addEventListener('focusin',e=>{if(e.target&&e.target.matches&&e.target.matches('[contenteditable="true"]'))save();},true);
+  cv.addEventListener('paste',e=>{
+    const ed=e.target&&e.target.closest?e.target.closest('[contenteditable="true"]'):null;
+    if(!ed||!cv.contains(ed))return;
+    e.preventDefault();
+    const cd=e.clipboardData||window.clipboardData;
+    let text=cd?cd.getData('text/plain'):'';
+    if(text==null)text='';
+    // Strip foreign rich-text styling; keep only plain text with sane line breaks.
+    text=text.replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ').replace(/[\t ]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').replace(/[ \t]{2,}/g,' ');
+    if(!text)return;
+    insertPlainTextAtCursor(ed,text);
+    ensureAutoTextOverflow(ed);
+    saveH();
+  },true);
+}
+function insertPlainTextAtCursor(ed,text){
+  ed.focus();
+  const sel=window.getSelection();
+  let range;
+  if(sel&&sel.rangeCount&&ed.contains(sel.getRangeAt(0).commonAncestorContainer)){
+    range=sel.getRangeAt(0);
+  }else{
+    range=document.createRange();
+    range.selectNodeContents(ed);
+    range.collapse(false);
+  }
+  range.deleteContents();
+  const frag=document.createDocumentFragment();
+  const lines=text.split('\n');
+  lines.forEach((line,i)=>{
+    if(i>0)frag.appendChild(document.createElement('br'));
+    if(line)frag.appendChild(document.createTextNode(line));
+  });
+  const lastNode=frag.lastChild;
+  range.insertNode(frag);
+  if(lastNode&&sel){
+    range.setStartAfter(lastNode);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
 }
 
 let _elResize=null,_elMove=null;
@@ -1965,6 +2021,33 @@ function _normalizeNonBgImageDims(node){
 }
 let _riSymbolMap=null;
 const EXPORT_ENGINE_VERSION='teamfix-v5';
+// Ensure every Inter weight (and the icon font) is fully loaded before html2canvas
+// captures — otherwise the browser substitutes a fallback face whose metrics differ,
+// producing overlapping glyphs, wrong kerning and heavier/lighter text than designed.
+async function _ensureExportFontsReady(){
+  try{
+    if(document.fonts&&document.fonts.load){
+      const weights=[300,400,500,600,700,800,900];
+      const jobs=[];
+      weights.forEach(w=>{
+        jobs.push(document.fonts.load(w+' 16px "Inter"'));
+        jobs.push(document.fonts.load('italic '+w+' 16px "Inter"'));
+      });
+      jobs.push(document.fonts.load('16px "remixicon"'));
+      await Promise.all(jobs.map(p=>p&&p.catch?p.catch(()=>{}):p));
+    }
+    if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+  }catch(_){/* best effort */}
+}
+// Match the editor's on-canvas text rendering inside the html2canvas clone so exported
+// weight/anti-aliasing looks identical to what the user designed.
+function _applyExportTextRendering(doc){
+  try{
+    const st=doc.createElement('style');
+    st.textContent='*{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}';
+    (doc.head||doc.documentElement||doc.body).appendChild(st);
+  }catch(_){/* noop */}
+}
 async function _prepareRemixSymbols(){
   if(_riSymbolMap)return _riSymbolMap;
   try{
@@ -2273,7 +2356,7 @@ async function _renderSafeCanvas(cv,scale){
   _exportLog('render:start',{scale});
   const built=await _buildSafeExportClone(cv);
   try{
-    const canvas=await html2canvas(built.node,{scale:scale,useCORS:false,allowTaint:false,backgroundColor:S.gBg,logging:false,removeContainer:true,windowWidth:1200,windowHeight:2000});
+    const canvas=await html2canvas(built.node,{scale:scale,useCORS:false,allowTaint:false,backgroundColor:S.gBg,logging:false,removeContainer:true,windowWidth:1200,windowHeight:2000,onclone:(doc)=>_applyExportTextRendering(doc)});
     const teamPainted=_paintTeamIconsFallbackOnCanvas(canvas,built.node);
     if(teamPainted>0)_exportLog('render:team-icon-fallback',{painted:teamPainted});
     _exportLog('render:ok',{scale,w:canvas.width,h:canvas.height});
@@ -2498,7 +2581,7 @@ async function _renderExactCanvas(cv,scale){
     const captureH=Math.max(cl.scrollHeight,cl.offsetHeight);
     const ww=Math.max(window.innerWidth,captureW);
     const wh=Math.max(window.innerHeight,captureH);
-    const canvas=await html2canvas(cl,{scale:scale,useCORS:true,allowTaint:false,backgroundColor:S.gBg,logging:false,removeContainer:true,width:captureW,height:captureH,windowWidth:ww,windowHeight:wh,scrollX:0,scrollY:0});
+    const canvas=await html2canvas(cl,{scale:scale,useCORS:true,allowTaint:false,backgroundColor:S.gBg,logging:false,removeContainer:true,width:captureW,height:captureH,windowWidth:ww,windowHeight:wh,scrollX:0,scrollY:0,onclone:(doc)=>_applyExportTextRendering(doc)});
     _exportLog('render:exact-ok',{scale,w:canvas.width,h:canvas.height,captureW,captureH});
     return canvas;
   } finally {
@@ -2594,6 +2677,7 @@ async function doExport(){
     try{
       window.__exportDebug=[];
       _exportLog('export:start',{format:exportFmt,scale:exportScale});
+      await _ensureExportFontsReady();
       const dpr=Math.max(1,Math.min(2,window.devicePixelRatio||1));
       const reqScale=Math.max(1,Math.min(6,exportScale*dpr));
       let c=null;
@@ -2769,7 +2853,7 @@ document.getElementById('tplFileIn').addEventListener('change',function(e){
         const tmp=document.createElement('div');
         tmp.innerHTML=sec.html;
         const el=tmp.firstElementChild;
-        if(el){cv.appendChild(el);}
+        if(el){cv.appendChild(el);hydrateLoadedSection(el);}
       });
       ensureEditableTargets(cv);
       initSortable();
